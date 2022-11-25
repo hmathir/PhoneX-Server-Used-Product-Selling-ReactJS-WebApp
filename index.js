@@ -34,6 +34,7 @@ connectDB();
 const categoryCollections = client.db('phoneX').collection('categoryCollections');
 const productsCollections = client.db('phoneX').collection('productsCollections');
 const usersCollections = client.db('phoneX').collection('usersCollections');
+const paymentsCollection = client.db('phoneX').collection('paymentsCollection');
 
 //Fetch All Category
 app.get('/categories', async (req, res) => {
@@ -46,7 +47,7 @@ app.get('/category/:id', async (req, res) => {
     const id = req.params.id;
     const category = await categoryCollections.findOne({ _id: ObjectId(id) });
 
-    const filter = { category: category.categoryName, status: {$ne : "Paid"} };
+    const filter = { category: category.categoryName, status: { $ne: "Paid" } };
     const result = await productsCollections.find(filter).toArray();
     res.send(result);
 });
@@ -70,7 +71,7 @@ app.post('/products', async (req, res) => {
     }
 });
 
-app.get('/booking/:id', async (req, res) => {
+app.get('/bookings/:id', async (req, res) => {
     const id = req.params.id;
     const filter = { _id: ObjectId(id) };
     const result = await productsCollections.findOne(filter);
@@ -118,6 +119,21 @@ app.post('/create-payment-intent', async (req, res) => {
     });
 });
 
+app.post('/payments', async (req, res) => {
+    const payment = req.body;
+    const result = await paymentsCollection.insertOne(payment);
+    const id = payment.bookingId
+    const filter = { _id: ObjectId(id) }
+    const updatedDoc = {
+        $set: {
+            status: "Paid",
+            transactionId: payment.transactionId
+        }
+    }
+    const updatedResult = await productsCollections.updateOne(filter, updatedDoc);
+    res.send(result);
+})
+
 app.post('/users', async (req, res) => {
     const user = req.body;
 
@@ -151,6 +167,13 @@ app.get('/user', async (req, res) => {
     }
     res.send(result);
 });
+
+app.get('/my-orders', async (req, res) => {
+    const email = req.query.email;
+    const filter = { buyerEmail : email };
+    const result = await productsCollections.find(filter).toArray();
+    res.send(result);
+})
 
 
 app.listen(port, () => {
