@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const app = express();
 require('dotenv').config();
+const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 const port = process.env.PORT || 4000;
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 
@@ -67,6 +68,54 @@ app.post('/products', async (req, res) => {
             message: 'Product Not Created'
         })
     }
+});
+
+app.get('/booking/:id', async (req, res) => {
+    const id = req.params.id;
+    const filter = { _id: ObjectId(id) };
+    const result = await productsCollections.findOne(filter);
+    res.send(result);
+})
+
+app.post('/booking', async (req, res) => {
+    const id = req.query.id;
+    const details = req.body;
+    console.log(details);
+    const filter = { _id: ObjectId(id) };
+    const option = { upsert: true };
+    const update = {
+        $set: details
+    };
+    const result = await productsCollections.updateOne(filter, update, option);
+    if (result.modifiedCount) {
+        res.send({
+            success: true,
+            message: 'Item Booked'
+        })
+    }
+    else {
+        res.send({
+            success: false,
+            message: 'Something Wrong...'
+        })
+    }
+})
+
+app.post('/create-payment-intent', async (req, res) => {
+    const booking = req.body;
+    const price = booking.price;
+    const amount = price * 100;
+
+    const paymentIntent = await stripe.paymentIntents.create({
+        currency: 'usd',
+        amount: amount,
+        "payment_method_types": [
+            "card"
+        ]
+    });
+    res.send({
+        clientSecret: paymentIntent.client_secret,
+    });
 });
 
 app.post('/users', async (req, res) => {
