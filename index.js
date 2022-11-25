@@ -1,9 +1,9 @@
 const express = require('express');
-const app = express();
 const cors = require('cors');
+const app = express();
 require('dotenv').config();
 const port = process.env.PORT || 4000;
-const { MongoClient, ServerApiVersion } = require('mongodb');
+const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 
 //cors
 app.use(cors());
@@ -31,6 +31,8 @@ const connectDB = async () => {
 connectDB();
 
 const categoryCollections = client.db('phoneX').collection('categoryCollections');
+const productsCollections = client.db('phoneX').collection('productsCollections');
+const usersCollections = client.db('phoneX').collection('usersCollections');
 
 //Fetch All Category
 app.get('/categories', async (req, res) => {
@@ -43,10 +45,64 @@ app.get('/category/:id', async (req, res) => {
     const id = req.params.id;
     const category = await categoryCollections.findOne({ _id: ObjectId(id) });
 
-    const filter = { category: category.name, status: {$ne : "Paid"} };
-    const result = await products.find(filter).toArray();
+    const filter = { category: category.categoryName, status: {$ne : "Paid"} };
+    const result = await productsCollections.find(filter).toArray();
     res.send(result);
 });
+
+
+app.post('/products', async (req, res) => {
+    const product = req.body;
+    product.status = "Available";
+    const result = await productsCollections.insertOne(product);
+    if (result.insertedId) {
+        res.send({
+            success: true,
+            message: 'Product Created Successfully'
+        })
+    }
+    else {
+        res.send({
+            success: false,
+            message: 'Product Not Created'
+        })
+    }
+});
+
+app.post('/users', async (req, res) => {
+    const user = req.body;
+
+    if (user.role === 'admin') {
+        return res.status(403).send({
+            success: false,
+            message: 'User Not Created'
+        })
+    }
+
+    user.verified = false;
+    const result = await usersCollections.insertOne(user);
+    if (result.insertedId) {
+        res.send({
+            success: true,
+            message: 'User Created Successfully'
+        })
+    } else {
+        res.send({
+            success: false,
+            message: 'User Not Created'
+        })
+    }
+});
+
+app.get('/user', async (req, res) => {
+    const email = req.query.email;
+    const result = await usersCollections.findOne({ email: email });
+    if (result) {
+        result.name = result.firstName + ' ' + result.lastName;
+    }
+    res.send(result);
+});
+
 
 app.listen(port, () => {
     console.log(`Server is running on port: ${port}`);
