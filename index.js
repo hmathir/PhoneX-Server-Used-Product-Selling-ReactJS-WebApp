@@ -39,7 +39,14 @@ app.get('/categories', async (req, res) => {
     res.send(category);
 })
 
+app.get('/category/:id', async (req, res) => {
+    const id = req.params.id;
+    const category = await categoryCollections.findOne({ _id: ObjectId(id) });
 
+    const filter = { category: category.name, status: {$ne : "Paid"} };
+    const result = await products.find(filter).toArray();
+    res.send(result);
+});
 
 app.listen(port, () => {
     console.log(`Server is running on port: ${port}`);
