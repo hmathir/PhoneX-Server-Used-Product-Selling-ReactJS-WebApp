@@ -134,6 +134,30 @@ app.post('/payments', async (req, res) => {
     res.send(result);
 })
 
+
+
+
+
+
+app.get('/my-orders', async (req, res) => {
+    const email = req.query.email;
+    const filter = { buyerEmail : email };
+    const result = await productsCollections.find(filter).toArray();
+    res.send(result);
+})
+
+
+//Users
+app.get('/user', async (req, res) => {
+    const email = req.query.email;
+    const result = await usersCollections.findOne({ email: email });
+    if (result) {
+        result.name = result.firstName;
+    }
+    res.send(result);
+});
+
+
 app.post('/users', async (req, res) => {
     const user = req.body;
 
@@ -159,21 +183,13 @@ app.post('/users', async (req, res) => {
     }
 });
 
-app.get('/user', async (req, res) => {
-    const email = req.query.email;
-    const result = await usersCollections.findOne({ email: email });
-    if (result) {
-        result.name = result.firstName + ' ' + result.lastName;
-    }
-    res.send(result);
-});
-
-app.get('/my-orders', async (req, res) => {
-    const email = req.query.email;
-    const filter = { buyerEmail : email };
-    const result = await productsCollections.find(filter).toArray();
+//get all users
+app.get('/users', async (req, res) => {
+    const filter = { role: req.query.role };
+    const result = await usersCollections.find(filter).toArray();
     res.send(result);
 })
+
 
 //Create User using Google OAuth.
 app.post('/google', async (req, res) => {
@@ -206,6 +222,36 @@ app.post('/google', async (req, res) => {
         })
     }
 });
+
+
+//Products
+//get true products
+app.get('/sponsoderdProducts', async (req, res) => {
+    let filter = { status: { $ne: "Paid" }, ads: true };
+    const result = await productsCollections.find(filter).toArray();
+    res.send(result);
+});
+
+
+//update User Photo
+app.put('/upload-profile', async (req, res) => {
+    const email = req.query.email;
+    const profile = req.query.profile;
+    const update = { $set: { profile: profile } };
+    const option = { upsert: true };
+    const result = await usersCollections.updateOne({ email: email }, update, option);
+    if (result.modifiedCount) {
+        res.send({
+            success: true,
+            message: 'Profile Updated'
+        })
+    } else {
+        res.send({
+            success: false,
+            message: 'Upps! Something Wrong'
+        })
+    }
+})
 
 
 app.listen(port, () => {
