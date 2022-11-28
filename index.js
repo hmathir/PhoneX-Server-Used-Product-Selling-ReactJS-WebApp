@@ -175,6 +175,38 @@ app.get('/my-orders', async (req, res) => {
     res.send(result);
 })
 
+//Create User using Google OAuth.
+app.post('/google', async (req, res) => {
+    const user = req.body;
+
+    if (user.role === 'admin') {
+        return res.status(403).send({
+            success: false,
+            message: 'User Not Created'
+        })
+    }
+    const alreadyExist = await usersCollections.findOne({ email: user.email });
+    if (alreadyExist) {
+        return res.send({
+            success: true,
+            message: 'Successfully Logged In'
+        })
+    }
+    user.verified = false;
+    const result = await usersCollections.insertOne(user);
+    if (result.insertedId) {
+        res.send({
+            success: true,
+            message: 'User Created Successfully'
+        })
+    } else {
+        res.send({
+            success: false,
+            message: 'User Not Created'
+        })
+    }
+});
+
 
 app.listen(port, () => {
     console.log(`Server is running on port: ${port}`);
