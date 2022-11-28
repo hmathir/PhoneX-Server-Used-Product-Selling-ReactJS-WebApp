@@ -5,6 +5,7 @@ require('dotenv').config();
 const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 const port = process.env.PORT || 4000;
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
+const jwt = require('jsonwebtoken');
 
 //cors
 app.use(cors());
@@ -35,6 +36,66 @@ const categoryCollections = client.db('phoneX').collection('categoryCollections'
 const productsCollections = client.db('phoneX').collection('productsCollections');
 const usersCollections = client.db('phoneX').collection('usersCollections');
 const paymentsCollection = client.db('phoneX').collection('paymentsCollection');
+const reportsCollections = client.db('phoneX').collection('reportsCollections');
+const blogCollections = client.db('phoneX').collection('blogCollections');
+
+
+
+//JWT
+//create jwt  
+app.get('/jwt', (req, res) => {
+    const email = req.query.email;
+    const token = jwt.sign({ email: email }, process.env.JWT_SECRET);
+    res.send({ token: token });
+});
+
+
+//verify jwt 
+const verifyToken = (req, res, next) => {
+    const bearerHeader = req.headers.authorization;
+    if (!bearerHeader) {
+        return res.status(401).send({ message: 'Unauthorized Access' });
+    }
+    const token = bearerHeader.split(' ')[1];
+    jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
+        if (err) {
+            return res.status(403).send({ message: 'Forbidden Access' });
+        }
+        req.email = decoded.email;
+        next();
+    });
+
+};
+
+// admin verify token
+const verifyAdmin = async (req, res, next) => {
+    const email = req.email;
+    const result = await usersCollections.findOne({ email: email });
+    if (result.role !== "admin") {
+        return res.status(401).send({ message: "access forbidden" });
+    }
+    next();
+};
+
+// verify seller 
+const verifySeller = async (req, res, next) => {
+    const email = req.email;
+    const result = await usersCollections.findOne({ email: email });
+    if (result.role !== "seller") {
+        return res.status(401).send({ message: "access forbidden" });
+    }
+    next();
+};
+
+// verify buyer 
+const verifyBuyer = async (req, res, next) => {
+    const email = req.email;
+    const result = await usersCollections.findOne({ email: email });
+    if (result.role !== "buyer") {
+        return res.status(401).send({ message: "access forbidden" });
+    }
+    next();
+};
 
 //Fetch All Category
 app.get('/categories', async (req, res) => {
@@ -139,8 +200,14 @@ app.post('/payments', async (req, res) => {
 
 
 
-app.get('/my-orders', async (req, res) => {
+app.get('/my-orders', verifyToken, verifyBuyer, async (req, res) => {
     const email = req.query.email;
+    if (email !== req.email) {
+        return res.send({
+            success: false,
+            message: 'Unauthorized Access'
+        })
+    }
     const filter = { buyerEmail : email };
     const result = await productsCollections.find(filter).toArray();
     res.send(result);
@@ -183,13 +250,29 @@ app.post('/users', async (req, res) => {
     }
 });
 
-//get all users
-app.get('/users', async (req, res) => {
+//Get all users by role.
+app.get('/users', verifyToken, verifyAdmin, async (req, res) => {
     const filter = { role: req.query.role };
     const result = await usersCollections.find(filter).toArray();
     res.send(result);
 })
 
+//Delete a signle user.
+app.delete('/users', verifyToken,verifyAdmin, async (req, res) => {
+    const email = req.query.email;
+    const result = await usersCollections.deleteOne({ email: email });
+    if (result.deletedCount) {
+        res.send({
+            success: true,
+            message: 'User Deleted'
+        })
+    } else {
+        res.send({
+            success: false,
+            message: 'Ups! Something Wrong'
+        })
+    }
+});
 
 //Create User using Google OAuth.
 app.post('/google', async (req, res) => {
@@ -252,6 +335,151 @@ app.put('/upload-profile', async (req, res) => {
         })
     }
 })
+
+
+//Create reports here
+app.post('/report', async (req, res) => {
+    const report = req.body;
+
+    if (!report.reporterName) {
+        res.send({
+            success: false,
+            message: 'Please Login...'
+        })
+    }
+
+    const alreadyReported = await reportsCollections.findOne({ productId: report.productId });
+    if (alreadyReported) {
+        return res.send({
+            success: false,
+            message: 'already Reported'
+        })
+    }
+    const result = await reportsCollections.insertOne(report);
+    if (result.insertedId) {
+        res.send({
+            success: true,
+            message: 'Report Sent Successfully'
+        })
+    } else {
+        res.send({
+            success: false,
+            message: 'Report Not Sent'
+        })
+    }
+})
+//Get All Reports Here
+app.get('/reports', verifyToken, verifyAdmin, async (req, res) => {
+    const result = await reportsCollections.find({}).toArray();
+    res.send(result);
+});
+
+
+//Delete Reported Product
+app.delete('/reports', verifyToken, verifyAdmin, async (req, res) => {
+    const id = req.query.id;
+    let success;
+
+    if (id) {
+        const result = await productsCollections.deleteOne({ _id: ObjectId(id) });
+        if (result.deletedCount) {
+            success = true;
+        }
+    }
+    if (req.query.reportId) {
+        const result2 = await reportsCollections.deleteOne({ _id: ObjectId(req.query.reportId) });
+        if (result2.deletedCount) {
+            success = true;
+        }
+    }
+    if (success) {
+        res.send({
+            success: true,
+            message: 'Deleted Successfully'
+        })
+    }
+    else {
+        res.send({
+            success: false,
+            message: 'Not Deleted'
+        })
+    }
+
+})
+
+
+// verify seller
+app.patch('/seller-verify', verifyToken, verifyAdmin, async (req, res) => {
+    const email = req.query.email;
+    const update = { $set: { verified: true } };
+    const result = await usersCollections.updateOne({ email: email }, update);
+    if (result.modifiedCount) {
+        res.send({
+            success: true,
+            message: 'Congrass! Seller Verified!'
+        })
+    } else {
+        res.send({
+            success: false,
+            message: 'Ups! Something Wrong'
+        })
+    }
+})
+
+//My-Products
+app.get('/my-products', verifyToken, verifySeller,  async (req, res) => {
+    const email = req.query.email;
+    if (email !== req.email) {
+        return res.send({
+            success: false,
+            message: 'Unauthorized Access'
+        })
+    }
+    const result = await productsCollections.find({ sellerEmail: email }).toArray();
+    res.send(result);
+});
+
+//Update Sponsored Status
+app.patch('/run-ad',  async (req, res) => {
+    const id = req.query.id;
+    const filter = { _id: ObjectId(id) };
+    const update = { $set: { ads: true } };
+    const result = await productsCollections.updateOne(filter, update);
+    if (result.modifiedCount) {
+        res.send({
+            success: true,
+            message: 'Ad Run Successfully'
+        })
+    } else {
+        res.send({
+            success: false,
+            message: 'Ups! Something Wrong',
+        })
+    }
+});
+
+// seller delete product 
+app.delete('/products', async (req, res) => {
+    const id = req.query.id;
+    const result = await productsCollections.deleteOne({ _id: ObjectId(id) });
+    if (result.deletedCount) {
+        res.send({
+            success: true,
+            message: 'Deleted Successfully'
+        })
+    } else {
+        res.send({
+            success: false,
+            message: 'Ups! Something Wrong'
+        })
+    }
+});
+
+//get blogs
+app.get('/blogs', async (req, res) => {
+    const result = await blogCollections.find({}).toArray();
+    res.send(result);
+});
 
 
 app.listen(port, () => {
